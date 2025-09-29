@@ -10,8 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: Asia/Bangkok
+    env:
+      TZ: Asia/Bangkok
       RUN_MARKER: "รันเสร็จแล้ว:"
-      NOTEBOOK_IN: "WFO_test_no_out.ipynb"
+      NOTEBOOK_IN: "WFO_Test_no_write.ipynb"   # ← แก้ให้ตรงชื่อไฟล์จริง
       NOTEBOOK_EXEC: "/tmp/WFO_executed.ipynb"
 
     steps:
