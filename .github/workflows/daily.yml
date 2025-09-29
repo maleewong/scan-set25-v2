@@ -1,0 +1,86 @@
+name: daily-report
+
+on:
+  schedule:
+    - cron: "30 0 * * 1-5"  # 07:30 น.ไทย (00:30 UTC) ทุกวันจันทร์-ศุกร์
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Bangkok
+      RUN_MARKER: "รันเสร็จแล้ว:"
+      NOTEBOOK_IN: "WFO_test_no_out.ipynb"
+      NOTEBOOK_EXEC: "/tmp/WFO_executed.ipynb"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Show run date/time (Bangkok)
+        run: date
+
+      - name: Execute notebook with papermill
+        run: |
+          papermill "${NOTEBOOK_IN}" "${NOTEBOOK_EXEC}" -k python3 -p RUN_MARKER "${RUN_MARKER}"
+
+      - name: Verify execution & marker
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          nb_path = os.environ["NOTEBOOK_EXEC"]
+          marker  = os.environ["RUN_MARKER"]
+          with open(nb_path, "r", encoding="utf-8") as f:
+              nb = json.load(f)
+          counts = [c.get("execution_count") for c in nb.get("cells", []) if c.get("cell_type")=="code"]
+          if not any(c is not None for c in counts):
+              sys.exit("ERROR: notebook not executed.")
+          big = "\n".join(
+              "".join(c.get("source", [])) if c.get("cell_type")=="markdown"
+              else "".join(str(o.get("text","")) for o in c.get("outputs", []))
+              for c in nb.get("cells", [])
+          )
+          if marker not in big:
+              sys.exit(f"ERROR: marker '{marker}' not found.")
+          print("Notebook executed OK.")
+          PY
+
+      - name: Convert executed notebook to HTML (hide code)
+        run: |
+          mkdir -p docs
+          jupyter nbconvert \
+            --to html \
+            --TemplateExporter.exclude_input=True \
+            "${NOTEBOOK_EXEC}" \
+            --output index.html \
+            --output-dir docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
