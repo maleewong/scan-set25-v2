@@ -2,7 +2,7 @@ name: daily-report
 
 on:
   schedule:
-    - cron: "30 0 * * 1-5"  # 07:30 น.ไทย (00:30 UTC) ทุกวันจันทร์-ศุกร์
+    - cron: "30 0 * * 1-5"
   workflow_dispatch:
 
 jobs:
@@ -10,15 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: Asia/Bangkok
-    env:
-      TZ: Asia/Bangkok
       RUN_MARKER: "รันเสร็จแล้ว:"
-      NOTEBOOK_IN: "WFO_Test_no_write.ipynb"   # ← แก้ให้ตรงชื่อไฟล์จริง
+      NOTEBOOK_IN: "WFO_Test_no_write.ipynb"   # ← ใช้ชื่อที่มีอยู่จริง
       NOTEBOOK_EXEC: "/tmp/WFO_executed.ipynb"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: List files (debug)
+        run: ls -lah
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,9 +30,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Show run date/time (Bangkok)
-        run: date
 
       - name: Execute notebook with papermill
         run: |
@@ -61,12 +59,8 @@ jobs:
       - name: Convert executed notebook to HTML (hide code)
         run: |
           mkdir -p docs
-          jupyter nbconvert \
-            --to html \
-            --TemplateExporter.exclude_input=True \
-            "${NOTEBOOK_EXEC}" \
-            --output index.html \
-            --output-dir docs
+          jupyter nbconvert --to html --TemplateExporter.exclude_input=True \
+            "${NOTEBOOK_EXEC}" --output index.html --output-dir docs
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
