@@ -2,8 +2,19 @@ name: daily-report
 
 on:
   schedule:
-    - cron: "30 0 * * 1-5"
+    - cron: "30 0 * * 1-5"    # 07:30 น.ไทย
   workflow_dispatch:
+
+# ✅ ให้สิทธิ์ที่ Pages ต้องใช้
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# ✅ กันชนกันเวลามีรันซ้อน
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -11,7 +22,7 @@ jobs:
     env:
       TZ: Asia/Bangkok
       RUN_MARKER: "รันเสร็จแล้ว:"
-      NOTEBOOK_IN: "WFO_Test_no_write.ipynb"   # ← ใช้ชื่อที่มีอยู่จริง
+      NOTEBOOK_IN: "WFO_Test_no_write.ipynb"   # ให้ตรงชื่อไฟล์จริง
       NOTEBOOK_EXEC: "/tmp/WFO_executed.ipynb"
 
     steps:
@@ -46,12 +57,25 @@ jobs:
           counts = [c.get("execution_count") for c in nb.get("cells", []) if c.get("cell_type")=="code"]
           if not any(c is not None for c in counts):
               sys.exit("ERROR: notebook not executed.")
-          big = "\n".join(
-              "".join(c.get("source", [])) if c.get("cell_type")=="markdown"
-              else "".join(str(o.get("text","")) for o in c.get("outputs", []))
-              for c in nb.get("cells", [])
-          )
-          if marker not in big:
+          def text_from_output(o):
+              if isinstance(o, dict):
+                  if 'text' in o and o['text']:
+                      return o['text'] if isinstance(o['text'], str) else ''.join(o['text'])
+                  data=o.get('data',{})
+                  for m in ('text/markdown','text/plain','text/html'):
+                      if m in data and data[m]:
+                          v=data[m]
+                          return v if isinstance(v,str) else ''.join(v)
+              return ''
+          big=[]
+          for c in nb.get("cells", []):
+              if c.get("cell_type")=="markdown":
+                  src=c.get("source", [])
+                  big.append(''.join(src) if isinstance(src, list) else str(src))
+              elif c.get("cell_type")=="code":
+                  for o in c.get("outputs", []):
+                      big.append(text_from_output(o))
+          if marker not in '\n'.join(big):
               sys.exit(f"ERROR: marker '{marker}' not found.")
           print("Notebook executed OK.")
           PY
@@ -62,6 +86,11 @@ jobs:
           jupyter nbconvert --to html --TemplateExporter.exclude_input=True \
             "${NOTEBOOK_EXEC}" --output index.html --output-dir docs
 
+      # ✅ เตรียมสภาพแวดล้อม Pages
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # ✅ อัปโหลดไฟล์ที่จะแสดงผลเป็น artifact 'github-pages'
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -70,13 +99,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # ✅ ใช้ artifact จากขั้นตอน build เพื่อสร้าง deployment
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
